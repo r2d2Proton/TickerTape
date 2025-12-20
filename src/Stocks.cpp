@@ -19,8 +19,16 @@ using namespace std::chrono;
 using json = nlohmann::json;
 
 
-// ---------------------------------------------------------------------------------------
-// Download URL:
+// ------------------------------------------------------------------------------------------------------------------------------------
+// Yahoo Finance download URL:
+// https://query1.finance.yahoo.com/v8/finance/chart/AMZN?interval=1m&range=7d
+// https ://query1.finance.yahoo.com/v8/finance/chart/IBM?interval=1m&range=7d
+// https ://query1.finance.yahoo.com/v8/finance/chart/INTC?interval=1m&range=7d
+// https ://query1.finance.yahoo.com/v8/finance/chart/MSFT?interval=1m&range=7d
+// https ://query1.finance.yahoo.com/v8/finance/chart/NVDA?interval=1m&range=7d
+// 
+// ------------------------------------------------------------------------------------------------------------------------------------
+// Alpha Vantage download URL:
 // https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=AMZN&interval=1min&outputsize=full&datatype=csv&apikey=demo
 //
 // Filename: /AlphaVantage/Downloads/2018-09-07/intraday_1min_AMZN.csv
@@ -34,7 +42,7 @@ using json = nlohmann::json;
 // 2018-09-07 09:30:00,1937.9301,1944.8199,1937.8101,1944.0699,215066
 // :
 // convert dataset to map<timestamp, vector<symbol, open, volume>>
-// ---------------------------------------------------------------------------------------
+// 
 //static string prefix = "https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=";
 //static string suffix = "&interval=1min&outputsize=full&datatype=csv&apikey=TP0YZA44F9L6E10L";
 // 
@@ -46,18 +54,19 @@ using json = nlohmann::json;
 // GLOBAL_QUOTE
 // TIME_SERIES_DAILY
 // TIME_SERIES_INTRADAY
-// 
+// ------------------------------------------------------------------------------------------------------------------------------------
+static string apiKey("TP0YZA44F9L6E10L");
 static string ListingStatusPrefix = "https://www.alphavantage.co/query?function=LISTING_STATUS";
-static string ListingStatusSuffix = "&apikey=TP0YZA44F9L6E10L";
+static string ListingStatusSuffix = "&apikey=" + apiKey;
 
 static string GlobalQuotePrefix = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=";
-static string GlobalQuoteSuffix = "&interval=1min&outputsize=full&datatype=json&apikey=TP0YZA44F9L6E10L";
+static string GlobalQuoteSuffix = "&interval=1min&outputsize=full&datatype=json&apikey=" + apiKey;
 
 static string TimeSeriesDailyPrefix = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=";
-static string TimeSeriesDailySuffix = "&interval=1min&datatype=json&apikey=TP0YZA44F9L6E10L";
+static string TimeSeriesDailySuffix = "&interval=1min&datatype=json&apikey=" + apiKey;
 
 static string TimeSeriesIntradayPrefix = "https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=";
-static string TimeSeriesIntradaySuffix = "&interval=1min&datatype=json&apikey=TP0YZA44F9L6E10L";
+static string TimeSeriesIntradaySuffix = "&interval=1min&datatype=json&apikey=" + apiKey;
 
 
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp)
@@ -77,7 +86,138 @@ static CURLcode downloadURL(CURL* curl, string url)
 }
 
 
-static void downloadListingStatus(CURL* curl, string& downloadBuffer)
+static long fetch_with_backoff(CURL* curl, const string& url, string& downloadBuffer, int maxRetries = 6)
+{
+	int attempt = 0;
+	long http_code = 0;
+	
+	while (attempt <= maxRetries)
+	{
+		downloadBuffer.clear();
+		CURLcode res = downloadURL(curl, url);
+
+		if (res != CURLE_OK)
+		{
+			std::cerr << "curl error: " << curl_easy_strerror(res) << endl;
+			std::this_thread::sleep_for(std::chrono::seconds(2 << attempt));
+			++attempt;
+			continue;
+		}
+		
+		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+		if (http_code == 200) return http_code;
+		
+		if (http_code == 429)
+		{
+			// exponential backoff
+			int wait = (1 << attempt) * 2; // 2,4,8...
+			std::cerr << "429 received, backing off " << wait << "s" << endl;
+			std::this_thread::sleep_for(std::chrono::seconds(wait));
+			++attempt;
+			continue;
+		}
+		
+		// other non-200 codes: break and return
+		std::cerr << "HTTP code: " << http_code << endl;
+		return http_code;
+	}
+	
+	return http_code;
+}
+
+
+static string epoch_to_utc_string(long epoch)
+{
+	std::time_t t = static_cast<std::time_t>(epoch);
+	std::tm result{};
+	gmtime_s(&result, &t);
+	
+	char buf[32];
+	strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &result);
+	
+	return string(buf);
+}
+
+
+static void yahoo_json_to_csv(const string& jsonText, const string& outFilename)
+{
+	json j = json::parse(jsonText);
+	auto& result = j["chart"]["result"][0];
+	auto timestamps = result["timestamp"];
+	auto quote = result["indicators"]["quote"][0];
+
+	ofstream ofs(outFilename, std::ios::app);
+	if (!ofs)
+	{
+		std::cerr << "Cannot open " << outFilename << endl;
+		return;
+	}
+	
+	for (size_t i = 0; i < timestamps.size(); ++i)
+	{
+		if (timestamps[i].is_null()) continue;
+
+		long ts = timestamps[i].get<long>();
+		double open = quote["open"][i].is_null() ? NAN : quote["open"][i].get<double>();
+		double high = quote["high"][i].is_null() ? NAN : quote["high"][i].get<double>();
+		double low = quote["low"][i].is_null() ? NAN : quote["low"][i].get<double>();
+		double close = quote["close"][i].is_null() ? NAN : quote["close"][i].get<double>();
+		long volume = quote["volume"][i].is_null() ? 0 : quote["volume"][i].get<long>();
+		
+		ofs << epoch_to_utc_string(ts) << "," << open << "," << high << "," << low << "," << close << "," << volume << endl;
+	}
+	
+	ofs.close();
+}
+
+
+static void downloadYahoo(CURL* curl, string& downloadBuffer, Stock& stocks, map<string, string>& symbols, const string& path)
+{
+	for (auto& symbol : symbols)
+	{
+		string url = "https://query1.finance.yahoo.com/v8/finance/chart/" + symbol.first + "?interval=1m&range=7d";
+		cout << url << endl;
+
+		long code = fetch_with_backoff(curl, url, downloadBuffer);
+
+		if (code == 200 && !downloadBuffer.empty())
+		{
+			// Save JavaScript Object Notation (JSON)
+			string jsonFilename(path + PathSeparator + symbol.first + "_7d.json");
+			ofstream jsonFile(jsonFilename);
+			jsonFile << downloadBuffer;
+			jsonFile.close();
+			cout << "Saved JSON: " << jsonFilename << endl;
+
+			// Convert to Comma Separator Values (CSV)
+			string csvFilename(path + PathSeparator + symbol.first + "_1m_7d.csv");
+			
+			// write header if file doesn't exist
+			ifstream check(csvFilename);
+			bool exists = check.good();
+			check.close();
+			
+			if (!exists)
+			{
+				ofstream hdr(csvFilename);
+				hdr << "timestamp,open,high,low,close,volume\n";
+				hdr.close();
+			}
+			
+			yahoo_json_to_csv(downloadBuffer, csvFilename);
+			
+			cout << "Saved CSV: " << csvFilename << endl;
+		}
+		else
+		{
+			std::cerr << "Failed to fetch data, HTTP code: " << code << endl;
+		}
+	}
+}
+
+
+static void downloadListingStatus(CURL* curl, string& downloadBuffer, const string& path)
 {
 	// LISTING_STATUS
 	string url = ListingStatusPrefix + ListingStatusSuffix;
@@ -91,7 +231,7 @@ static void downloadListingStatus(CURL* curl, string& downloadBuffer)
 }
 
 
-static void downloadGlobalQuote(CURL* curl, string& downloadBuffer, const string& symbol)
+static void downloadGlobalQuote(CURL* curl, string& downloadBuffer, const string& symbol, const string& path)
 {
 	// GLOBAL_QUOTE
 	string url = GlobalQuotePrefix + symbol + GlobalQuoteSuffix;
@@ -109,7 +249,7 @@ static void downloadGlobalQuote(CURL* curl, string& downloadBuffer, const string
 }
 
 
-static void downloadTimeSeriesDaily(CURL* curl, string& downloadBuffer, const string& symbol)
+static void downloadTimeSeriesDaily(CURL* curl, string& downloadBuffer, const string& symbol, const string& path)
 {
 	// TIME_SERIES_DAILY
 	string url = TimeSeriesDailyPrefix + symbol + TimeSeriesDailySuffix;
@@ -145,7 +285,7 @@ static void downloadTimeSeriesDaily(CURL* curl, string& downloadBuffer, const st
 }
 
 
-static void downloadTimeSeriesIntraday(CURL* curl, string& downloadBuffer, const string& symbol)
+static void downloadTimeSeriesIntraday(CURL* curl, string& downloadBuffer, const string& symbol, const string& path)
 {
 	// TIME_SERIES_INTRADAY
 	string url = TimeSeriesIntradayPrefix + symbol + TimeSeriesIntradaySuffix;
@@ -165,38 +305,54 @@ static void downloadTimeSeriesIntraday(CURL* curl, string& downloadBuffer, const
 }
 
 
-static bool downloadStocks(Stock& stocks, map<string, string>& symbols)
+static void downloadAlphaVantage(CURL* curl, string& downloadBuffer, Stock& stocks, map<string, string>& symbols, const string& path)
 {
-	CURL* curl = curl_easy_init();
-	if (!curl)
-		return false;
+	// LISTING_STATUS
+	downloadListingStatus(curl, downloadBuffer, path);
 
-	CURLcode res;
+	for (auto& symbol : symbols)
+	{
+		// GLOBAL_QUOTE
+		downloadGlobalQuote(curl, downloadBuffer, symbol.first, path);
+
+		// TIME_SERIES_DAILY
+		downloadTimeSeriesDaily(curl, downloadBuffer, symbol.first, path);
+
+		// TIME_SERIES_INTRADAY
+		downloadTimeSeriesIntraday(curl, downloadBuffer, symbol.first, path);
+	}
+}
+
+
+static bool downloadStocks(Stock& stocks, map<string, string>& symbols, const string& path)
+{
+	curl_global_init(CURL_GLOBAL_DEFAULT);
+	CURL* curl = curl_easy_init();
+	if (!curl) return false;
+
+	CURLcode res = CURLE_OK;
 	string url;
 	string downloadBuffer;
 	
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &downloadBuffer);
+	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (compatible)");
 
-	// LISTING_STATUS
-	downloadListingStatus(curl, downloadBuffer);
-	clearScreen();
+	// Yahoo Finance
+	cout << "Downloading Yahoo Finance..." << endl;
+	downloadYahoo(curl, downloadBuffer, stocks, symbols, path);
+	cout << "Yahoo Finance completed." << endl;
+	std::this_thread::sleep_for(std::chrono::seconds(9));
 
-	for (auto& symbol : symbols)
-	{
-		// GLOBAL_QUOTE
-		downloadGlobalQuote(curl, downloadBuffer, symbol.first);
-
-		// TIME_SERIES_DAILY
-		downloadTimeSeriesDaily(curl, downloadBuffer, symbol.first);
-
-		// TIME_SERIES_INTRADAY
-		downloadTimeSeriesIntraday(curl, downloadBuffer, symbol.first);
-
-		//clearScreen();
-	}
+	// Alpha Vantage
+	cout << "Downloading Alpha Vantage..." << endl;
+	downloadAlphaVantage(curl, downloadBuffer, stocks, symbols, path);
+	cout << "Alpha Vantage completed." << endl;
+	std::this_thread::sleep_for(std::chrono::seconds(9));
 
 	curl_easy_cleanup(curl);
+	curl_global_cleanup();
 
 	return true;
 }
@@ -420,7 +576,7 @@ bool downloadDataset
 	cout << "Adding symbols from " << fullpathSymbolsFilename << endl;
 	addSymbols(symbols, fullpathSymbolsFilename);
 
-	downloadStocks(stocks, symbols);
+	downloadStocks(stocks, symbols, path);
 
 	cout << "Writing Symbols URL's " << fullpathSymbolsURLsFilename  << endl;
 	writeSymbolsDownloadURLs(symbols, fullpathSymbolsURLsFilename);

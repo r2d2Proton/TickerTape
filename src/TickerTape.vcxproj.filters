@@ -11,7 +11,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Aggregate.cpp">
+    <ClCompile Include="Stocks.cpp">
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="TickerTape.cpp">

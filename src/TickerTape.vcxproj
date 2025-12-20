@@ -127,7 +127,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Aggregate.cpp" />
+    <ClCompile Include="Stocks.cpp" />
     <ClCompile Include="TickerTape.cpp" />
     <ClCompile Include="Utils.cpp" />
   </ItemGroup>

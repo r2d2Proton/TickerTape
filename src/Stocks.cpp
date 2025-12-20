@@ -127,19 +127,6 @@ static long fetch_with_backoff(CURL* curl, const string& url, string& downloadBu
 }
 
 
-static string epoch_to_utc_string(long epoch)
-{
-	std::time_t t = static_cast<std::time_t>(epoch);
-	std::tm result{};
-	gmtime_s(&result, &t);
-	
-	char buf[32];
-	strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &result);
-	
-	return string(buf);
-}
-
-
 static void yahoo_json_to_csv(const string& jsonText, const string& outFilename)
 {
 	json j = json::parse(jsonText);
@@ -172,14 +159,41 @@ static void yahoo_json_to_csv(const string& jsonText, const string& outFilename)
 }
 
 
-static void downloadYahoo(CURL* curl, string& downloadBuffer, Stock& stocks, map<string, string>& symbols, const string& path)
+static void downloadYahoo
+(
+	CURL* curl,
+	string& downloadBuffer,
+	Stock& stocks,
+	map<string, string>& symbols,
+	const string& path,
+	const string& start,
+	const string& end
+)
 {
 	for (auto& symbol : symbols)
 	{
-		string url = "https://query1.finance.yahoo.com/v8/finance/chart/" + symbol.first + "?interval=1m&range=7d";
+		auto now = system_clock::now();
+		auto range = computeLocalDayEpochRange(now);
+		long period1 = range.first;
+		long period2 = range.second;
+
+		time_t t1 = parseDateToEpoch(start);
+		time_t t2 = parseDateToEpoch(end);
+
+		// add one day to make sure the end date is included
+		t2 += 24 * 60 * 60;
+
+		string url = "https://query1.finance.yahoo.com/v8/finance/chart/"
+			       + symbol.first
+			       + "?period1=" + to_string(static_cast<long long>(t1)) //std::to_string(period1)
+			       + "&period2=" + to_string(static_cast<long long>(t2)) //std::to_string(period2)
+			       + "&interval=1m&events=history&includeAdjustedClose=true";
+
 		cout << url << endl;
 
 		long code = fetch_with_backoff(curl, url, downloadBuffer);
+
+		cout << downloadBuffer << endl;
 
 		if (code == 200 && !downloadBuffer.empty())
 		{
@@ -305,7 +319,16 @@ static void downloadTimeSeriesIntraday(CURL* curl, string& downloadBuffer, const
 }
 
 
-static void downloadAlphaVantage(CURL* curl, string& downloadBuffer, Stock& stocks, map<string, string>& symbols, const string& path)
+static void downloadAlphaVantage
+(
+	CURL* curl,
+	string& downloadBuffer,
+	Stock& stocks,
+	map<string, string>& symbols,
+	const string& path,
+	const string& start,
+	const string& end
+)
 {
 	// LISTING_STATUS
 	downloadListingStatus(curl, downloadBuffer, path);
@@ -324,7 +347,14 @@ static void downloadAlphaVantage(CURL* curl, string& downloadBuffer, Stock& stoc
 }
 
 
-static bool downloadStocks(Stock& stocks, map<string, string>& symbols, const string& path)
+static bool downloadStocks
+(
+	Stock& stocks,
+	map<string, string>& symbols,
+	const string& path,
+	const string& start,
+	const string& end
+	)
 {
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 	CURL* curl = curl_easy_init();
@@ -339,15 +369,15 @@ static bool downloadStocks(Stock& stocks, map<string, string>& symbols, const st
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (compatible)");
 
-	// Yahoo Finance
+	 // Yahoo Finance
 	cout << "Downloading Yahoo Finance..." << endl;
-	downloadYahoo(curl, downloadBuffer, stocks, symbols, path);
+	downloadYahoo(curl, downloadBuffer, stocks, symbols, path, start, end);
 	cout << "Yahoo Finance completed." << endl;
 	std::this_thread::sleep_for(std::chrono::seconds(9));
 
 	// Alpha Vantage
 	cout << "Downloading Alpha Vantage..." << endl;
-	downloadAlphaVantage(curl, downloadBuffer, stocks, symbols, path);
+	downloadAlphaVantage(curl, downloadBuffer, stocks, symbols, path, start, end);
 	cout << "Alpha Vantage completed." << endl;
 	std::this_thread::sleep_for(std::chrono::seconds(9));
 
@@ -559,6 +589,8 @@ bool downloadDataset
 	Stock& stocks,
 	map<string, string>& symbols,
 	const string& path,
+	const string& start,
+	const string& end,
 	const string& symbolsFilename,
 	const string& symbolsURLsFilename,
 	const string& stocksURLsFilename,
@@ -576,7 +608,7 @@ bool downloadDataset
 	cout << "Adding symbols from " << fullpathSymbolsFilename << endl;
 	addSymbols(symbols, fullpathSymbolsFilename);
 
-	downloadStocks(stocks, symbols, path);
+	downloadStocks(stocks, symbols, path, start, end);
 
 	cout << "Writing Symbols URL's " << fullpathSymbolsURLsFilename  << endl;
 	writeSymbolsDownloadURLs(symbols, fullpathSymbolsURLsFilename);

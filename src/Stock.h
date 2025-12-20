@@ -67,6 +67,8 @@ bool downloadDataset
 	Stock& stocks,
 	std::map<std::string, std::string>& symbols,
 	const std::string& path,
+	const std::string& start,
+	const std::string& end,
 	const std::string& symbolsFilename = "Symbols.csv",
 	const std::string& symbolsURLsFilename = "SymbolsURLs.txt",
 	const std::string& stocksURLsFilename = "StocksURLs.txt",
@@ -80,4 +82,10 @@ std::string trim(const std::string& s);
 const std::string getFullpath(const std::string& path, const std::string& filename);
 std::string getDownloadFolder();
 
+std::time_t parseDateToEpoch(const std::string& mmddyyyy);
+
+std::string epoch_to_utc_string(long epoch);
+
+bool timePointToLocalTm(const TimePoint& tp, std::tm& outLocalTm);
+std::pair<long long, long long> computeLocalDayEpochRange(const TimePoint& tp);
 

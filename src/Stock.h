@@ -8,6 +8,7 @@
 
 constexpr char PathSeparator = static_cast<char>(std::filesystem::path::preferred_separator);
 
+
 using TimePoint = std::chrono::system_clock::time_point;
 
 using Trade = std::tuple<std::string, double, int>;
@@ -62,6 +63,8 @@ struct _TOP_STOCK
 using TopStockStruct = std::map<std::string, _TOP_STOCK>;
 using TopStockStructItr = TopStockStruct::iterator;
 
+enum WindowType { Console, Graphical, ThreeD };
+
 struct _TICKER_TAPE_ARGS
 {
 	bool bInteractive = true;
@@ -74,6 +77,8 @@ struct _TICKER_TAPE_ARGS
 	std::string stocksURLsFilename = "StocksURLs.txt";
 	std::string combinedStocksFilename = "CombinedStocks.csv";
 	std::string parseStocksFilename = "CombinedStocks.csv";
+
+	WindowType windowTypes[];
 
 	_TICKER_TAPE_ARGS() { }
 };
@@ -98,4 +103,3 @@ std::string epoch_to_utc_string(long epoch);
 
 bool timePointToLocalTm(const TimePoint& tp, std::tm& outLocalTm);
 std::pair<long long, long long> computeLocalDayEpochRange(const TimePoint& tp);
-

@@ -1,3 +1,19 @@
+https://query1.finance.yahoo.com/v8/finance/chart/AMZN?period1=1762412400&period2=1762498800&interval=1m&events=history&includeAdjustedClose=true
+Failed: AMZN day 308
+HTTP code: 422
+{
+    "chart":
+    {
+        "result":null,
+        "error":
+        {
+            "code":"Unprocessable Entity",
+            "description":"1m data not available for startTime=1762326000 and endTime=1762412400."
+                          "The requested range must be within the last 30 days."
+        }
+    }
+}
+
 Downloading Yahoo Finance...
 start: 11/01/2025
 end: 12/20/2025

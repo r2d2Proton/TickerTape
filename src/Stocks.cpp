@@ -18,6 +18,7 @@ using namespace std;
 using namespace std::chrono;
 using json = nlohmann::json;
 
+enum SaveType { SingleFile, DailyFile, WeeklyFile, MonthlyFile, YearlyFile };
 
 // ------------------------------------------------------------------------------------------------------------------------------------
 // Yahoo Finance download URL:
@@ -159,7 +160,175 @@ static void yahoo_json_to_csv(const string& jsonText, const string& outFilename)
 }
 
 
+static TimePoint parse_mmddyyyy(const string& s)
+{
+	std::tm tm{};
+	std::istringstream iss(s);
+	iss >> std::get_time(&tm, "%m/%d/%Y");
+	tm.tm_isdst = -1;
+	std::time_t tt = std::mktime(&tm);
+	return std::chrono::system_clock::from_time_t(tt);
+}
+
+
+static vector<std::pair<long long, long long>> computeDailyRanges(const TimePoint& start, const TimePoint& end)
+{
+	vector<std::pair<long long, long long>> ranges;
+	TimePoint cur = start;
+	while (cur <= end)
+	{
+		auto [p1, p2] = computeLocalDayEpochRange(cur);
+		ranges.emplace_back(p1, p2);
+		cur += std::chrono::hours(24);
+	}
+	return ranges;
+}
+
+
+static string buildYahooURL
+(
+	const string& symbol,
+	long long p1,
+	long long p2,
+	const string& interval = "1m"
+)
+{
+	return "https://query1.finance.yahoo.com/v8/finance/chart/"
+		+ symbol
+		+ "?period1=" + std::to_string(p1)
+		+ "&period2=" + std::to_string(p2)
+		+ "&interval=" + interval
+		+ "&events=history&includeAdjustedClose=true";
+}
+
+
+static std::pair<string, string> makeOutputFilenames
+(
+	const string& basePath,
+	const string& symbol,
+	const TimePoint& day,
+	SaveType saveType
+)
+{
+	std::tm tm{};
+	timePointToLocalTm(day, tm);
+
+	char buf[32];
+	std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
+
+	string csvFilename;
+
+	switch (saveType)
+	{
+	case SingleFile:
+		csvFilename = basePath + PathSeparator + symbol + ".csv";
+		break;
+
+	case DailyFile:
+		csvFilename = basePath + PathSeparator + symbol + "_" + buf + ".csv";
+		break;
+
+	case WeeklyFile:
+	{
+		int week = tm.tm_yday / 7;
+		csvFilename = basePath + PathSeparator + symbol + "_week" + std::to_string(week) + ".csv";
+		break;
+	}
+
+	case MonthlyFile:
+		csvFilename = basePath + PathSeparator + symbol + "_" +
+			std::to_string(tm.tm_year + 1900) + "-" +
+			std::to_string(tm.tm_mon + 1) + ".csv";
+		break;
+
+	case YearlyFile:
+		csvFilename = basePath + PathSeparator + symbol + "_" +
+			std::to_string(tm.tm_year + 1900) + ".csv";
+		break;
+	}
+
+	string jsonFilename = csvFilename.substr(0, csvFilename.find_last_of('.')) + ".json";
+	return { jsonFilename, csvFilename };
+}
+
+
 static void downloadYahoo
+(
+	CURL* curl,
+	string& downloadBuffer,
+	Stock& stocks,
+	map<string, string>& symbols,
+	_TICKER_TAPE_ARGS& args,
+	SaveType saveType
+)
+{
+	auto now = system_clock::now();
+	auto range = computeLocalDayEpochRange(now);
+	long period1 = range.first;
+	long period2 = range.second;
+
+	time_t t1 = parseDateToEpoch(args.start);
+	time_t t2 = parseDateToEpoch(args.end);
+
+	// add one day to make sure the end date is included
+	t2 += 24 * 60 * 60;
+
+	string tmpSymbol("NVDA");
+
+	string tmpURL = "https://query1.finance.yahoo.com/v8/finance/chart/"
+		+ tmpSymbol
+		+ "?period1=" + to_string(static_cast<long long>(t1))
+		+ "&period2=" + to_string(static_cast<long long>(t2))
+		+ "&interval=1m&events=history&includeAdjustedClose=true";
+
+	TimePoint start = parse_mmddyyyy(args.start);
+	TimePoint end = parse_mmddyyyy(args.end);
+
+	auto ranges = computeDailyRanges(start, end);
+
+	for (auto& sym : symbols)
+	{
+		const string& symbol = sym.first;
+
+		for (size_t i = 0; i < ranges.size(); ++i)
+		{
+			auto [p1, p2] = ranges[i];
+
+			string url = buildYahooURL(symbol, p1, p2, "1m");
+			cout << url << endl;
+
+			long code = fetch_with_backoff(curl, url, downloadBuffer);
+			cout << downloadBuffer << endl;
+
+			if (code != 200 || downloadBuffer.empty())
+			{
+				std::cerr << "Failed: " << symbol << " day " << i << std::endl;
+				continue;
+			}
+
+			TimePoint day = start + std::chrono::hours(24 * i);
+
+			auto [jsonFilename, csvFilename] = makeOutputFilenames(args.path, symbol, day, saveType);
+
+			ofstream jsonFile(jsonFilename);
+			jsonFile << downloadBuffer;
+			jsonFile.close();
+			cout << "Saved JSON: " << jsonFilename << endl;
+
+			bool exists = std::filesystem::exists(csvFilename);
+			if (!exists)
+			{
+				std::ofstream hdr(csvFilename);
+				hdr << "timestamp,open,high,low,close,volume\n";
+			}
+
+			yahoo_json_to_csv(downloadBuffer, csvFilename);
+		}
+	}
+}
+
+
+static void downloadYahooOld
 (
 	CURL* curl,
 	string& downloadBuffer,
@@ -388,7 +557,7 @@ static bool downloadStocks
 
 	 // Yahoo Finance
 	cout << "Downloading Yahoo Finance..." << endl;
-	downloadYahoo(curl, downloadBuffer, stocks, symbols, args);
+	downloadYahoo(curl, downloadBuffer, stocks, symbols, args, SaveType::DailyFile);
 	cout << "Yahoo Finance completed." << endl;
 	std::this_thread::sleep_for(std::chrono::seconds(9));
 
@@ -461,6 +630,64 @@ static bool writeStocksDownloadURLs(Stock& stocks, const string& filename)
 	outFile.close();
 
 	return true;
+}
+
+
+static void writeCombinedData(Stock& stocks, const string& filename)
+{
+	ofstream outCombinedFile(filename);
+
+	// use first map entry vector size as the number of data points to write
+	for (StockItr stockItr = stocks.begin(); stockItr != stocks.end(); ++stockItr)
+	{
+		for (TradeVectorItr tradeItr = stockItr->second.begin(); tradeItr != stockItr->second.end(); ++tradeItr)
+		{
+			Trade& trade = *tradeItr;
+			outCombinedFile << stockItr->first << " " << get<0>(trade) << " " << get<1>(trade) << " " << get<2>(trade);
+
+			// write  CR/LF if more data is available (either another timestamp or another trade for the current day
+			if (next(stockItr, 1) != stocks.end() || next(tradeItr, 1) != stockItr->second.end())
+				outCombinedFile << endl;
+		}
+	}
+}
+
+
+static bool parseStocks(Stock& stocks, const string& parseStocksFilename)
+{
+	ifstream inFile(parseStocksFilename);
+	if (inFile.is_open())
+	{
+		try
+		{
+			while (!inFile.eof())
+			{
+				string date;
+				string timestamp;
+				string symbol;
+				double price = 0.0;
+				int volume = 0;
+
+				inFile >> date;
+				inFile >> timestamp;
+				inFile >> symbol;
+				inFile >> price;
+				inFile >> volume;
+
+				if (inFile.good())
+					stocks[date + " " + timestamp].push_back(make_tuple(symbol, price, volume));
+			}
+		}
+		catch (...)
+		{
+		}
+
+		inFile.close();
+
+		return true;
+	}
+
+	return false;
 }
 
 
@@ -544,26 +771,6 @@ static bool parseCSVStocks(Stock& stocks, const string& filename, const string& 
 }
 
 
-static void writeCombinedData(Stock& stocks, const string& filename)
-{
-	ofstream outCombinedFile(filename);
-
-	// use first map entry vector size as the number of data points to write
-	for (StockItr stockItr = stocks.begin(); stockItr != stocks.end(); ++stockItr)
-	{
-		for (TradeVectorItr tradeItr = stockItr->second.begin(); tradeItr != stockItr->second.end(); ++tradeItr)
-		{
-			Trade& trade = *tradeItr;
-			outCombinedFile << stockItr->first << " " << get<0>(trade) << " " << get<1>(trade) << " " << get<2>(trade);
-			
-			// write  CR/LF if more data is available (either another timestamp or another trade for the current day
-			if (next(stockItr, 1) != stocks.end() || next(tradeItr, 1) != stockItr->second.end())
-				outCombinedFile << endl;
-		}
-	}
-}
-
-
 static bool addSymbols(map<string, string>& symbols, const string& symbolsFilename)
 {
 	ifstream inFile(symbolsFilename);
@@ -601,6 +808,30 @@ static bool addSymbols(map<string, string>& symbols, const string& symbolsFilena
 }
 
 
+static bool cleanFiles(std::initializer_list<string> filenames)
+{
+	namespace fs = std::filesystem;
+
+	auto tryDelete = [](const string& filename) -> bool
+	{
+		std::error_code ec;
+		if (fs::exists(filename, ec))
+		{
+			fs::remove(filename, ec);
+			return !ec;
+		}
+			
+		return true;
+	};
+
+	bool lOK = true;
+	for (const auto& filename : filenames)
+		lOK &= tryDelete(filename);
+
+	return lOK;
+}
+
+
 bool downloadDataset
 (
 	Stock& stocks,
@@ -611,9 +842,22 @@ bool downloadDataset
 	const string date = "2018-09-07";
 	const string fullpathSymbolsFilename = getFullpath(args.path, args.symbolsFilename);
 	const string fullpathSymbolsURLsFilename = getFullpath(args.path, args.symbolsURLsFilename);
-	const string fullpathstocksURLsFilename = getFullpath(args.path, args.stocksURLsFilename);
+	const string fullpathStocksURLsFilename = getFullpath(args.path, args.stocksURLsFilename);
 	const string fullpathCombinedStocksFilename = getFullpath(args.path, args.combinedStocksFilename);
 	const string fullpathParseStocksFilename = getFullpath(args.path, args.parseStocksFilename);
+
+	if (args.bCleanApp)
+	{
+		cout << "Deleting old files...";
+		cleanFiles
+		({
+			fullpathSymbolsURLsFilename,
+			fullpathStocksURLsFilename,
+			fullpathCombinedStocksFilename,
+			fullpathParseStocksFilename
+		});
+		cout << "done." << endl;
+	}
 
 	cout << "Adding symbols from " << fullpathSymbolsFilename << endl;
 	addSymbols(symbols, fullpathSymbolsFilename);
@@ -623,8 +867,14 @@ bool downloadDataset
 	cout << "Writing Symbols URL's " << fullpathSymbolsURLsFilename  << endl;
 	writeSymbolsDownloadURLs(symbols, fullpathSymbolsURLsFilename);
 
-	cout << "Writing Stocks downloaded URL's " << fullpathstocksURLsFilename << endl;
-	writeStocksDownloadURLs(stocks, fullpathstocksURLsFilename);
+	cout << "Writing Stocks downloaded URL's " << fullpathStocksURLsFilename << endl;
+	writeStocksDownloadURLs(stocks, fullpathStocksURLsFilename);
+
+	cout << "Writing combined data to " << fullpathCombinedStocksFilename << endl;
+	writeCombinedData(stocks, fullpathCombinedStocksFilename);
+
+	cout << "Testing parsing algorithm for " << fullpathCombinedStocksFilename << endl;
+	parseStocks(stocks, fullpathCombinedStocksFilename);
 
 	cout << "Parsing combined stocks from " << fullpathParseStocksFilename << endl;
 	if (!parseCSVStocks(stocks, fullpathParseStocksFilename, args.path, date))
@@ -635,8 +885,5 @@ bool downloadDataset
 		return false;
 	}
 	
-	cout << "Writing combined data to " << fullpathCombinedStocksFilename << endl;
-	writeCombinedData(stocks, fullpathCombinedStocksFilename);
-
 	return true;
 }

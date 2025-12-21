@@ -62,18 +62,28 @@ struct _TOP_STOCK
 using TopStockStruct = std::map<std::string, _TOP_STOCK>;
 using TopStockStructItr = TopStockStruct::iterator;
 
+struct _TICKER_TAPE_ARGS
+{
+	bool bInteractive = true;
+	bool bCleanApp = true;
+	std::string path;
+	std::string start = "11/01/2025";
+	std::string end = "12/20/2025";
+	std::string symbolsFilename = "Symbols.csv";
+	std::string symbolsURLsFilename = "SymbolsURLs.txt";
+	std::string stocksURLsFilename = "StocksURLs.txt";
+	std::string combinedStocksFilename = "CombinedStocks.csv";
+	std::string parseStocksFilename = "CombinedStocks.csv";
+
+	_TICKER_TAPE_ARGS() { }
+};
+
+
 bool downloadDataset
 (
 	Stock& stocks,
 	std::map<std::string, std::string>& symbols,
-	const std::string& path,
-	const std::string& start,
-	const std::string& end,
-	const std::string& symbolsFilename = "Symbols.csv",
-	const std::string& symbolsURLsFilename = "SymbolsURLs.txt",
-	const std::string& stocksURLsFilename = "StocksURLs.txt",
-	const std::string& combinedStocksFilename = "CombinedStocks.json",
-	const std::string& parseStocksFilename = "CombinedStocks.csv"
+	_TICKER_TAPE_ARGS& args
 );
 
 // general prototypes

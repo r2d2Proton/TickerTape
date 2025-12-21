@@ -165,9 +165,7 @@ static void downloadYahoo
 	string& downloadBuffer,
 	Stock& stocks,
 	map<string, string>& symbols,
-	const string& path,
-	const string& start,
-	const string& end
+	_TICKER_TAPE_ARGS& args
 )
 {
 	for (auto& symbol : symbols)
@@ -177,8 +175,8 @@ static void downloadYahoo
 		long period1 = range.first;
 		long period2 = range.second;
 
-		time_t t1 = parseDateToEpoch(start);
-		time_t t2 = parseDateToEpoch(end);
+		time_t t1 = parseDateToEpoch(args.start);
+		time_t t2 = parseDateToEpoch(args.end);
 
 		// add one day to make sure the end date is included
 		t2 += 24 * 60 * 60;
@@ -198,14 +196,14 @@ static void downloadYahoo
 		if (code == 200 && !downloadBuffer.empty())
 		{
 			// Save JavaScript Object Notation (JSON)
-			string jsonFilename(path + PathSeparator + symbol.first + "_7d.json");
+			string jsonFilename(args.path + PathSeparator + symbol.first + "_7d.json");
 			ofstream jsonFile(jsonFilename);
 			jsonFile << downloadBuffer;
 			jsonFile.close();
 			cout << "Saved JSON: " << jsonFilename << endl;
 
 			// Convert to Comma Separator Values (CSV)
-			string csvFilename(path + PathSeparator + symbol.first + "_1m_7d.csv");
+			string csvFilename(args.path + PathSeparator + symbol.first + "_1m_7d.csv");
 			
 			// write header if file doesn't exist
 			ifstream check(csvFilename);
@@ -231,7 +229,12 @@ static void downloadYahoo
 }
 
 
-static void downloadListingStatus(CURL* curl, string& downloadBuffer, const string& path)
+static void downloadListingStatus
+(
+	CURL* curl,
+	string& downloadBuffer,
+	_TICKER_TAPE_ARGS& args
+)
 {
 	// LISTING_STATUS
 	string url = ListingStatusPrefix + ListingStatusSuffix;
@@ -245,7 +248,13 @@ static void downloadListingStatus(CURL* curl, string& downloadBuffer, const stri
 }
 
 
-static void downloadGlobalQuote(CURL* curl, string& downloadBuffer, const string& symbol, const string& path)
+static void downloadGlobalQuote
+(
+	CURL* curl,
+	string& downloadBuffer,
+	const string& symbol,
+	_TICKER_TAPE_ARGS& args
+)
 {
 	// GLOBAL_QUOTE
 	string url = GlobalQuotePrefix + symbol + GlobalQuoteSuffix;
@@ -263,7 +272,13 @@ static void downloadGlobalQuote(CURL* curl, string& downloadBuffer, const string
 }
 
 
-static void downloadTimeSeriesDaily(CURL* curl, string& downloadBuffer, const string& symbol, const string& path)
+static void downloadTimeSeriesDaily
+(
+	CURL* curl,
+	string& downloadBuffer,
+	const string& symbol,
+	_TICKER_TAPE_ARGS& args
+)
 {
 	// TIME_SERIES_DAILY
 	string url = TimeSeriesDailyPrefix + symbol + TimeSeriesDailySuffix;
@@ -299,7 +314,13 @@ static void downloadTimeSeriesDaily(CURL* curl, string& downloadBuffer, const st
 }
 
 
-static void downloadTimeSeriesIntraday(CURL* curl, string& downloadBuffer, const string& symbol, const string& path)
+static void downloadTimeSeriesIntraday
+(
+	CURL* curl,
+	string& downloadBuffer,
+	const string& symbol,
+	_TICKER_TAPE_ARGS& args
+)
 {
 	// TIME_SERIES_INTRADAY
 	string url = TimeSeriesIntradayPrefix + symbol + TimeSeriesIntradaySuffix;
@@ -325,24 +346,22 @@ static void downloadAlphaVantage
 	string& downloadBuffer,
 	Stock& stocks,
 	map<string, string>& symbols,
-	const string& path,
-	const string& start,
-	const string& end
+	_TICKER_TAPE_ARGS& args
 )
 {
 	// LISTING_STATUS
-	downloadListingStatus(curl, downloadBuffer, path);
+	downloadListingStatus(curl, downloadBuffer, args);
 
 	for (auto& symbol : symbols)
 	{
 		// GLOBAL_QUOTE
-		downloadGlobalQuote(curl, downloadBuffer, symbol.first, path);
+		downloadGlobalQuote(curl, downloadBuffer, symbol.first, args);
 
 		// TIME_SERIES_DAILY
-		downloadTimeSeriesDaily(curl, downloadBuffer, symbol.first, path);
+		downloadTimeSeriesDaily(curl, downloadBuffer, symbol.first, args);
 
 		// TIME_SERIES_INTRADAY
-		downloadTimeSeriesIntraday(curl, downloadBuffer, symbol.first, path);
+		downloadTimeSeriesIntraday(curl, downloadBuffer, symbol.first, args);
 	}
 }
 
@@ -351,10 +370,8 @@ static bool downloadStocks
 (
 	Stock& stocks,
 	map<string, string>& symbols,
-	const string& path,
-	const string& start,
-	const string& end
-	)
+	_TICKER_TAPE_ARGS& args
+)
 {
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 	CURL* curl = curl_easy_init();
@@ -371,13 +388,13 @@ static bool downloadStocks
 
 	 // Yahoo Finance
 	cout << "Downloading Yahoo Finance..." << endl;
-	downloadYahoo(curl, downloadBuffer, stocks, symbols, path, start, end);
+	downloadYahoo(curl, downloadBuffer, stocks, symbols, args);
 	cout << "Yahoo Finance completed." << endl;
 	std::this_thread::sleep_for(std::chrono::seconds(9));
 
 	// Alpha Vantage
 	cout << "Downloading Alpha Vantage..." << endl;
-	downloadAlphaVantage(curl, downloadBuffer, stocks, symbols, path, start, end);
+	downloadAlphaVantage(curl, downloadBuffer, stocks, symbols, args);
 	cout << "Alpha Vantage completed." << endl;
 	std::this_thread::sleep_for(std::chrono::seconds(9));
 
@@ -588,27 +605,20 @@ bool downloadDataset
 (
 	Stock& stocks,
 	map<string, string>& symbols,
-	const string& path,
-	const string& start,
-	const string& end,
-	const string& symbolsFilename,
-	const string& symbolsURLsFilename,
-	const string& stocksURLsFilename,
-	const string& combinedStocksFilename,
-	const string& parseStocksFilename
+	_TICKER_TAPE_ARGS& args
 )
 {
 	const string date = "2018-09-07";
-	const string fullpathSymbolsFilename = getFullpath(path, symbolsFilename);
-	const string fullpathSymbolsURLsFilename = getFullpath(path, symbolsURLsFilename);
-	const string fullpathstocksURLsFilename = getFullpath(path, stocksURLsFilename);
-	const string fullpathCombinedStocksFilename = getFullpath(path, combinedStocksFilename);
-	const string fullpathParseStocksFilename = getFullpath(path, parseStocksFilename);
+	const string fullpathSymbolsFilename = getFullpath(args.path, args.symbolsFilename);
+	const string fullpathSymbolsURLsFilename = getFullpath(args.path, args.symbolsURLsFilename);
+	const string fullpathstocksURLsFilename = getFullpath(args.path, args.stocksURLsFilename);
+	const string fullpathCombinedStocksFilename = getFullpath(args.path, args.combinedStocksFilename);
+	const string fullpathParseStocksFilename = getFullpath(args.path, args.parseStocksFilename);
 
 	cout << "Adding symbols from " << fullpathSymbolsFilename << endl;
 	addSymbols(symbols, fullpathSymbolsFilename);
 
-	downloadStocks(stocks, symbols, path, start, end);
+	downloadStocks(stocks, symbols, args);
 
 	cout << "Writing Symbols URL's " << fullpathSymbolsURLsFilename  << endl;
 	writeSymbolsDownloadURLs(symbols, fullpathSymbolsURLsFilename);
@@ -617,7 +627,7 @@ bool downloadDataset
 	writeStocksDownloadURLs(stocks, fullpathstocksURLsFilename);
 
 	cout << "Parsing combined stocks from " << fullpathParseStocksFilename << endl;
-	if (!parseCSVStocks(stocks, fullpathParseStocksFilename, path, date))
+	if (!parseCSVStocks(stocks, fullpathParseStocksFilename, args.path, date))
 	{
 		cout << "Error reading " << fullpathParseStocksFilename << endl;
 		cout << "Press any key to continue. . .";

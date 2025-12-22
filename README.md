@@ -1,4 +1,4 @@
-﻿<div style="border-left: 4px solid #007acc; padding: 10px; background-color: #f0f8ff;">
+﻿<div style="border-left: 4px solid #007acc; padding: 2px 10px; background-color: #f0f8ff;">
  <h1>TickerTape</h1> 
  <strong>Note: </strong>Quick demonstration of mixing modern C++ elements/containers (tuple/map/vector) and struct
 

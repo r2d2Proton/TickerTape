@@ -1,6 +1,8 @@
-﻿## I like to test the extremes of the languages
-* The capture block is one of them. Notice the integers in and out are passed by value and set
-  to the value of 0 on the stack
+﻿# Ticker Tape
+## Quick demonstration of mixing modern C++ elements and containers (tuple/map/vector) and struct
+
+## I like to test the extremes of the languages
+* The capture block is one of them. Notice the integers in and out are passed by value and set to the value of 0 on the stack. When the first version of cleanFiles is called further below only the initializer_list is passed.
 
 Output
 
@@ -430,19 +432,7 @@ downloadDataset PROC
     pop  rbp
     ret
 downloadDataset ENDP
-
-
-
-
-
-
-
-
-
-
  
-# Ticker Tape
-* Quick demonstration of mixing modern C++ elements and containers (tuple/map/vector) and struct
 
 * Time permitting will animate stock trades in 3D:
    + requires preprocessing of historical data since the sources this project uses provides downloads of a single, specific, stock symbol

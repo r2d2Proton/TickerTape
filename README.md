@@ -1,5 +1,7 @@
-﻿# Ticker Tape
-## Quick demonstration of mixing modern C++ elements and containers (tuple/map/vector) and struct
+﻿<div style="border-left: 4px solid #007acc; padding: 10px; background-color: #f0f8ff;">
+ <h1>TickerTape</h1> 
+ <strong>Note:</strong>Quick demonstration of mixing modern C++ elements/containers (tuple/map/vector) and struct
+</div>
 
 ## I like to test the extremes of the languages
 * The capture block is one of them. Notice the integers in and out are passed by value and set to the value of 0 on the stack. When the first version of cleanFiles is called further below only the initializer_list is passed.
@@ -476,7 +478,3 @@ downloadDataset ENDP
 // https ://query1.finance.yahoo.com/v8/finance/chart/INTC?interval=1m&range=7d
 // https ://query1.finance.yahoo.com/v8/finance/chart/MSFT?interval=1m&range=7d
 // https ://query1.finance.yahoo.com/v8/finance/chart/NVDA?interval=1m&range=7d
-
-<div style="border-left: 4px solid #007acc; padding: 10px; background-color: #f0f8ff;">
- <strong>Note:</strong> This is a custom-styled note
-</div>

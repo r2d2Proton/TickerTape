@@ -3,6 +3,7 @@
   to the value of 0 on the stack
 
 Output
+
 in=1 out=-1 filename=C:\Users\Jerry\Downloads\SymbolsURLs.txt
 in=2 out=-2 filename=C:\Users\Jerry\Downloads\StocksURLs.txt
 in=3 out=-3 filename=C:\Users\Jerry\Downloads\CombinedStocks.csv

@@ -808,12 +808,16 @@ static bool addSymbols(map<string, string>& symbols, const string& symbolsFilena
 }
 
 
-static bool cleanFiles(std::initializer_list<string> filenames)
+static bool cleanFiles(std::initializer_list<string> filenames, int& in, int& out)
 {
 	namespace fs = std::filesystem;
 
-	auto tryDelete = [](const string& filename) -> bool
+	auto tryDelete = [&in, &out](const string& filename) -> bool
 	{
+		in++;
+		--out;
+		cout << "in=" << in << " out=" << out << " filename=" << filename << endl;
+
 		std::error_code ec;
 		if (fs::exists(filename, ec))
 		{
@@ -846,16 +850,22 @@ bool downloadDataset
 	const string fullpathCombinedStocksFilename = getFullpath(args.path, args.combinedStocksFilename);
 	const string fullpathParseStocksFilename = getFullpath(args.path, args.parseStocksFilename);
 
+	int in = 100;
+	int out = -100;
+
 	if (args.bCleanApp)
 	{
 		cout << "Deleting old files...";
 		cleanFiles
-		({
-			fullpathSymbolsURLsFilename,
-			fullpathStocksURLsFilename,
-			fullpathCombinedStocksFilename,
-			fullpathParseStocksFilename
-		});
+		(	{
+				fullpathSymbolsURLsFilename,
+				fullpathStocksURLsFilename,
+				fullpathCombinedStocksFilename,
+				fullpathParseStocksFilename
+			},
+			in,
+			out
+		);
 		cout << "done." << endl;
 	}
 

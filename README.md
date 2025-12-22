@@ -8,7 +8,7 @@ in=2 out=-2 filename=C:\Users\Jerry\Downloads\StocksURLs.txt
 in=3 out=-3 filename=C:\Users\Jerry\Downloads\CombinedStocks.csv
 in=4 out=-4 filename=C:\Users\Jerry\Downloads\CombinedStocks.csv
 
-\\\`cpp
+```c++
 static bool cleanFiles(std::initializer_list<string> filenames, int in = 0, int out = 0)
 {
 	namespace fs = std::filesystem;

@@ -221,6 +221,7 @@ in=102 out=-102 filename=C:\Users\Jerry\Downloads\StocksURLs.txt
 in=103 out=-103 filename=C:\Users\Jerry\Downloads\CombinedStocks.csv
 in=104 out=-104 filename=C:\Users\Jerry\Downloads\CombinedStocks.csv
 
+```c++
 static bool cleanFiles(std::initializer_list<string> filenames, int& in, int& out)
 {
 	namespace fs = std::filesystem;
@@ -277,7 +278,7 @@ bool downloadDataset
 
 	return true;
 }
-
+```
 
 * x86 Assembly Notes
 What this assembly preserves

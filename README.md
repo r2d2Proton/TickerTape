@@ -1,7 +1,7 @@
 ﻿<div style="border-left: 4px solid #007acc; padding: 0px; background-color: #f0f8ff;">
 <h1>TickerTape</h1> 
 Quick demonstration of mixing modern C++ elements/containers (tuple/map/vector) and struct
-<strong>Test Extremes of Languages</strong>
+<h3>Test Extremes of Languages</h3>
 The C++ Lambda Capture Block is one of them.
     auto fn = [x, &y](int z) {
         return x + y + z;

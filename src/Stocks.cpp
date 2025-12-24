@@ -18,8 +18,6 @@ using namespace std;
 using namespace std::chrono;
 using json = nlohmann::json;
 
-enum SaveType { SingleFile, DailyFile, WeeklyFile, MonthlyFile, YearlyFile };
-
 // ------------------------------------------------------------------------------------------------------------------------------------
 // Yahoo Finance download URL:
 // https://query1.finance.yahoo.com/v8/finance/chart/AMZN?interval=1m&range=7d
@@ -202,7 +200,7 @@ static string buildYahooURL
 }
 
 
-static std::pair<string, string> makeOutputFilenames
+static std::pair<string, string> makeOutputFilenamesOld
 (
 	const string& basePath,
 	const string& symbol,
@@ -210,45 +208,76 @@ static std::pair<string, string> makeOutputFilenames
 	SaveType saveType
 )
 {
+	namespace fs = std::filesystem;
+
 	std::tm tm{};
 	timePointToLocalTm(day, tm);
 
 	char buf[32];
 	std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
 
-	string csvFilename;
+	string dir;
+	if ((saveType & SaveType::SingleFile) != SaveType::None) dir = "Single";
+	if ((saveType & SaveType::DailyFile) != SaveType::None) dir = "Daily";
+	if ((saveType & SaveType::WeeklyFile) != SaveType::None) dir = "Weekly";
+	if ((saveType & SaveType::MonthlyFile) != SaveType::None) dir = "Monthly";
+	if ((saveType & SaveType::YearlyFile) != SaveType::None) dir = "Yearly";
 
-	switch (saveType)
-	{
-	case SingleFile:
-		csvFilename = basePath + PathSeparator + symbol + ".csv";
-		break;
+	const string folder = basePath + PathSeparator + dir;
+	const std::string jsonFilename = folder + PathSeparator + symbol + "_" + buf + ".json";
+	const std::string csvFilename = folder + PathSeparator + symbol + "_" + buf + ".csv";
 
-	case DailyFile:
-		csvFilename = basePath + PathSeparator + symbol + "_" + buf + ".csv";
-		break;
-
-	case WeeklyFile:
-	{
-		int week = tm.tm_yday / 7;
-		csvFilename = basePath + PathSeparator + symbol + "_week" + std::to_string(week) + ".csv";
-		break;
-	}
-
-	case MonthlyFile:
-		csvFilename = basePath + PathSeparator + symbol + "_" +
-			std::to_string(tm.tm_year + 1900) + "-" +
-			std::to_string(tm.tm_mon + 1) + ".csv";
-		break;
-
-	case YearlyFile:
-		csvFilename = basePath + PathSeparator + symbol + "_" +
-			std::to_string(tm.tm_year + 1900) + ".csv";
-		break;
-	}
-
-	string jsonFilename = csvFilename.substr(0, csvFilename.find_last_of('.')) + ".json";
 	return { jsonFilename, csvFilename };
+}
+
+
+static vector<OutputTarget> makeOutputFilenames
+(
+	const string& basePath,
+	const string& symbol,
+	const TimePoint& day,
+	SaveType saveType
+)
+{
+	namespace fs = std::filesystem;
+
+	std::tm tm{};
+	timePointToLocalTm(day, tm);
+
+	int year = tm.tm_year + 1900;
+	int month = tm.tm_mon + 1;
+	int yday = tm.tm_yday;
+	int week = yday / 7;
+
+	char daybuf[16];
+	std::strftime(daybuf, sizeof(daybuf), "%Y-%m-%d", &tm);
+
+	vector<OutputTarget> filenames;
+
+	auto push = [&](SaveType flag, const string& folder)
+	{
+		if ((saveType & flag) == SaveType::None)
+			return;
+
+		fs::create_directories(folder);
+
+		string jsonFilename = folder + PathSeparator + symbol + "_" + daybuf + ".json";
+		string csvFilename = folder + PathSeparator + symbol + "_" + daybuf + ".csv";
+
+		filenames.push_back({ jsonFilename, csvFilename });
+	};
+
+	push(SaveType::DailyFile, basePath + "/Daily/" + std::to_string(year) + "/" + std::to_string(month) + "/" + daybuf);
+
+	push(SaveType::MonthlyFile, basePath + "/Monthly/" + std::to_string(year) + "/" + std::to_string(month));
+
+	push(SaveType::WeeklyFile, basePath + "/Weekly/" + std::to_string(year) + "/week_" + std::to_string(week));
+
+	push(SaveType::YearlyFile, basePath + "/Yearly/" + std::to_string(year));
+
+	push(SaveType::SingleFile, basePath + "/Single");
+
+	return filenames;
 }
 
 
@@ -308,21 +337,25 @@ static void downloadYahoo
 
 			TimePoint day = start + std::chrono::hours(24 * i);
 
-			auto [jsonFilename, csvFilename] = makeOutputFilenames(args.path, symbol, day, saveType);
+			//auto [jsonFilename, csvFilename] = makeOutputFilenames(args.path, symbol, day, saveType);
+			auto filenames = makeOutputFilenames(args.path, symbol, day, saveType);
 
-			ofstream jsonFile(jsonFilename);
-			jsonFile << downloadBuffer;
-			jsonFile.close();
-			cout << "Saved JSON: " << jsonFilename << endl;
-
-			bool exists = std::filesystem::exists(csvFilename);
-			if (!exists)
+			for (const auto& out : filenames)
 			{
-				std::ofstream hdr(csvFilename);
-				hdr << "timestamp,open,high,low,close,volume\n";
-			}
+				ofstream jsonFile(out.jsonFilename);
+				jsonFile << downloadBuffer;
+				jsonFile.close();
+				cout << "Saved JSON: " << out.jsonFilename << endl;
 
-			yahoo_json_to_csv(downloadBuffer, csvFilename);
+				bool exists = std::filesystem::exists(out.csvFilename);
+				if (!exists)
+				{
+					ofstream hdr(out.csvFilename);
+					hdr << "timestamp,open,high,low,close,volume\n";
+				}
+
+				yahoo_json_to_csv(downloadBuffer, out.csvFilename);
+			}
 		}
 	}
 }
@@ -515,7 +548,8 @@ static void downloadAlphaVantage
 	string& downloadBuffer,
 	Stock& stocks,
 	map<string, string>& symbols,
-	_TICKER_TAPE_ARGS& args
+	_TICKER_TAPE_ARGS& args,
+	SaveType saveType
 )
 {
 	// LISTING_STATUS
@@ -539,7 +573,8 @@ static bool downloadStocks
 (
 	Stock& stocks,
 	map<string, string>& symbols,
-	_TICKER_TAPE_ARGS& args
+	_TICKER_TAPE_ARGS& args,
+	SaveType saveType
 )
 {
 	curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -557,13 +592,13 @@ static bool downloadStocks
 
 	 // Yahoo Finance
 	cout << "Downloading Yahoo Finance..." << endl;
-	downloadYahoo(curl, downloadBuffer, stocks, symbols, args, SaveType::DailyFile);
+	downloadYahoo(curl, downloadBuffer, stocks, symbols, args, saveType);
 	cout << "Yahoo Finance completed." << endl;
 	std::this_thread::sleep_for(std::chrono::seconds(9));
 
 	// Alpha Vantage
 	cout << "Downloading Alpha Vantage..." << endl;
-	downloadAlphaVantage(curl, downloadBuffer, stocks, symbols, args);
+	downloadAlphaVantage(curl, downloadBuffer, stocks, symbols, args, saveType);
 	cout << "Alpha Vantage completed." << endl;
 	std::this_thread::sleep_for(std::chrono::seconds(9));
 
@@ -808,11 +843,37 @@ static bool addSymbols(map<string, string>& symbols, const string& symbolsFilena
 }
 
 
-static bool cleanFiles(std::initializer_list<string> filenames, int& in, int& out)
+static void ensureDirectories(SaveType saveType, const string& basePath)
 {
 	namespace fs = std::filesystem;
 
-	auto tryDelete = [&in, &out](const string& filename) -> bool
+	auto make = [&](SaveType flag, const string& name)
+		{
+			if ((saveType & flag) != SaveType::None)
+				fs::create_directories(basePath + PathSeparator + name);
+		};
+
+	make(SaveType::SingleFile, "Single");
+	make(SaveType::DailyFile, "Daily");
+	make(SaveType::WeeklyFile, "Weekly");
+	make(SaveType::MonthlyFile, "Monthly");
+	make(SaveType::YearlyFile, "Yearly");
+}
+
+
+static bool cleanFiles
+(
+	SaveType saveType,
+	const string& basePath,
+	std::initializer_list<string> filenames,
+	int& in,
+	int& out
+)
+{
+	namespace fs = std::filesystem;
+	bool lOK = true;
+
+	auto tryDeleteFile = [&in, &out](const string& filename) -> bool
 	{
 		in++;
 		--out;
@@ -820,17 +881,32 @@ static bool cleanFiles(std::initializer_list<string> filenames, int& in, int& ou
 
 		std::error_code ec;
 		if (fs::exists(filename, ec))
-		{
 			fs::remove(filename, ec);
-			return !ec;
-		}
 			
-		return true;
+		return !ec;
 	};
 
-	bool lOK = true;
 	for (const auto& filename : filenames)
-		lOK &= tryDelete(filename);
+		lOK &= tryDeleteFile(filename);
+
+	auto recreateDir = [&](SaveType flag, const string& dirName)
+	{
+		if ((saveType & flag) == SaveType::None) return;
+
+		const string fullpath = basePath + PathSeparator + dirName;
+		std::error_code ec;
+		if (fs::exists(fullpath, ec))
+			fs::remove_all(fullpath, ec);
+
+		fs::create_directories(fullpath, ec);
+		lOK &= !ec;
+	};
+
+	recreateDir(SaveType::SingleFile, "Single");
+	recreateDir(SaveType::DailyFile, "Daily");
+	recreateDir(SaveType::WeeklyFile, "Weekly");
+	recreateDir(SaveType::MonthlyFile, "Monthly");
+	recreateDir(SaveType::YearlyFile,"Yearly");
 
 	return lOK;
 }
@@ -840,7 +916,8 @@ bool downloadDataset
 (
 	Stock& stocks,
 	map<string, string>& symbols,
-	_TICKER_TAPE_ARGS& args
+	_TICKER_TAPE_ARGS& args,
+	SaveType saveType
 )
 {
 	const string date = "2018-09-07";
@@ -856,8 +933,14 @@ bool downloadDataset
 	if (args.bCleanApp)
 	{
 		cout << "Deleting old files...";
+
+		ensureDirectories(saveType, args.path);
+
 		cleanFiles
-		(	{
+		(
+			saveType,
+			args.path,
+			{
 				fullpathSymbolsURLsFilename,
 				fullpathStocksURLsFilename,
 				fullpathCombinedStocksFilename,
@@ -872,7 +955,7 @@ bool downloadDataset
 	cout << "Adding symbols from " << fullpathSymbolsFilename << endl;
 	addSymbols(symbols, fullpathSymbolsFilename);
 
-	downloadStocks(stocks, symbols, args);
+	downloadStocks(stocks, symbols, args, saveType);
 
 	cout << "Writing Symbols URL's " << fullpathSymbolsURLsFilename  << endl;
 	writeSymbolsDownloadURLs(symbols, fullpathSymbolsURLsFilename);

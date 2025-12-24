@@ -8,7 +8,6 @@
 
 constexpr char PathSeparator = static_cast<char>(std::filesystem::path::preferred_separator);
 
-
 using TimePoint = std::chrono::system_clock::time_point;
 
 using Trade = std::tuple<std::string, double, int>;
@@ -63,7 +62,40 @@ struct _TOP_STOCK
 using TopStockStruct = std::map<std::string, _TOP_STOCK>;
 using TopStockStructItr = TopStockStruct::iterator;
 
-enum WindowType { Console, Graphical, ThreeD };
+struct OutputTarget
+{
+	std::string jsonFilename;
+	std::string csvFilename;
+};
+
+// use bit field and allow for combination of file types to be written
+enum class SaveType : uint32_t
+{
+	None = 0,
+	SingleFile = 1 << 0,
+	DailyFile = 1 << 1,
+	WeeklyFile = 1 << 2,
+	MonthlyFile = 1 << 3,
+	YearlyFile = 1 << 4,
+	AllFileTypes = 0xFFFF
+};
+
+inline SaveType operator|(SaveType a, SaveType b)
+{
+	return static_cast<SaveType>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+
+inline SaveType operator&(SaveType a, SaveType b)
+{
+	return static_cast<SaveType>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
+
+inline bool any(SaveType a)
+{
+	return static_cast<uint32_t>(a) != 0;
+}
+
+enum class WindowType { Console, Graphical, ThreeD };
 
 struct _TICKER_TAPE_ARGS
 {
@@ -88,7 +120,8 @@ bool downloadDataset
 (
 	Stock& stocks,
 	std::map<std::string, std::string>& symbols,
-	_TICKER_TAPE_ARGS& args
+	_TICKER_TAPE_ARGS& args,
+	SaveType saveType
 );
 
 // general prototypes

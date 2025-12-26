@@ -813,7 +813,7 @@ struct lambda_main_0
 
 Below is a representative MSVC x64 output for the lambda’s `operator()`.
 
-### Assembly Block (Part 1)
+### Assembly Block
 
 ```
 ; lambda_main_0::operator()(int)
@@ -826,18 +826,8 @@ lambda_main_0::operator():
 
     mov     eax, DWORD PTR [rcx]        ; load x
     mov     ecx, DWORD PTR [rcx+4]      ; load y
-```
-
-### Assembly Block (Part 2)
-
-```
     add     eax, ecx                    ; x + y
     add     eax, edx                    ; (x + y) + z
-```
-
-### Assembly Block (Part 3 — padded to avoid Edge truncation)
-
-```
     pop     rbp
     ret
     nop

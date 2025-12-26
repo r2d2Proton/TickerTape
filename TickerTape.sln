@@ -3,17 +3,22 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36717.8
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TickerTape", "src\TickerTape.vcxproj", "{47222E09-F5D8-497C-ACC5-4C5DE826645F}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TickerTape", "Src\TickerTape.vcxproj", "{47222E09-F5D8-497C-ACC5-4C5DE826645F}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 	ProjectSection(SolutionItems) = preProject
-		notes\Notes.txt = notes\Notes.txt
+		Docs\Notes.txt = Docs\Notes.txt
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
 	ProjectSection(SolutionItems) = preProject
 		LICENSE.txt = LICENSE.txt
 		README.md = README.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Continuum", "Continuum", "{F3F5FBDB-7A66-46FE-AEBA-DA0FE489966C}"
+	ProjectSection(SolutionItems) = preProject
+		Docs\Continuum\2025-12-26-Continuum.md = Docs\Continuum\2025-12-26-Continuum.md
 	EndProjectSection
 EndProject
 Global
@@ -35,6 +40,9 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{F3F5FBDB-7A66-46FE-AEBA-DA0FE489966C} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {B57D81D0-4136-407F-97B3-2D9BA36B90B9}
